@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <node pkg="pgd_gpio_ros" type="pgd_gpio" name="gpio" output="screen">
+        <rosparam>
+            PigpiodIP: "172.20.0.97"
+            PigpiodPort: "8888"
+            input:
+                port:   [16,    20,     21]
+                invert: [false, true,   false]
+                pull:   [down,  up,     off]
+                event:  [true,  true,   false]
+                filter: [0,     0,      10]
+            output:
+                port:       [5,     6]
+                invert:     [false, true]
+                default:    [0,     1]
+        </rosparam>
+    </node>
+</launch>
