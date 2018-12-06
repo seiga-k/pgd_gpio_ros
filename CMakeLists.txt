@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(pgd_gpio_ros)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+add_compile_options(-std=c++11)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -17,6 +17,8 @@ find_package(catkin REQUIRED COMPONENTS
 ## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS system)
 
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR} )
+find_package(pigpio MODULE REQUIRED)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -105,8 +107,8 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES pgd_gpio_ros
-#  CATKIN_DEPENDS roscpp rospy std_msgs
-#  DEPENDS system_lib
+  CATKIN_DEPENDS roscpp rospy std_msgs
+  DEPENDS system_lib
 )
 
 ###########
@@ -118,6 +120,7 @@ catkin_package(
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
+  ${pigpio_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -150,6 +153,12 @@ include_directories(
 #   ${catkin_LIBRARIES}
 # )
 
+add_executable(pgd_gpio src/pgd_gpio.cpp)
+add_dependencies(pgd_gpio ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} pigpiod_if2)
+target_link_libraries(pgd_gpio
+  ${catkin_LIBRARIES}
+  pigpiod_if2
+)
 #############
 ## Install ##
 #############
