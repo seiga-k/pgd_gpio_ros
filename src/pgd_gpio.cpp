@@ -42,13 +42,14 @@ public:
 
                         for(int i = 0; i < port_num; ++i){
                             input_list.push_back(param.second["port"][i]);
+                            check_pgd_error(set_mode(mpi, input_list[i], PI_INPUT));
                             if(has_invert){
                                 bool inv(param.second["invert"][i]);
-                                std::cout << "Set invert option" << std::endl;
+                                //std::cout << "Set invert option" << std::endl;
                                 input_inverts.push_back(inv);
                             }
                             if(has_pull){
-                                std::cout << "Set pull up down option" << std::endl;
+                                //std::cout << "Set pull up down option" << std::endl;
                                 int ret;
                                 if(param.second["pull"][i] == "up"){
                                     ret = set_pull_up_down(mpi, input_list[i], PI_PUD_UP);
@@ -60,15 +61,16 @@ public:
                                 check_pgd_error(ret);
                             }
                             if(has_event){
-                                std::cout << "Set event option" << std::endl;
+                                //std::cout << "Set event option" << std::endl;
                                 int ret;
                                 if(param.second["event"][i]){
                                     ret = callback_ex(mpi, input_list[i], EITHER_EDGE, in_cb, reinterpret_cast<void*>(this));
                                     check_pgd_error(ret);
+                                    input_cb_id.push_back(ret);
                                 }
                             }
                             if(has_filter){
-                                std::cout << "Set filter option" << std::endl;
+                                //std::cout << "Set filter option" << std::endl;
                                 int ret;
                                 int us(param.second["filter"][i]);
                                 ret = set_glitch_filter(mpi, input_list[i], us);
@@ -82,7 +84,34 @@ public:
                         ros::shutdown();
                     }
                 }else if(param.first == "output"){
-                    std::cout << "Onput settings" << std::endl;
+                    //std::cout << "Onput settings" << std::endl;
+                    if(param.second.hasMember("port")){
+                        output_list.clear();
+                        int32_t port_num(param.second["port"].size());
+                        bool has_invert(check_member(param.second, "invert", port_num));
+                        bool has_default(check_member(param.second, "default", port_num));
+
+                        for(int i = 0; i < port_num; i++){
+                            output_list.push_back(param.second["port"][i]);
+                            check_pgd_error(set_pull_up_down(mpi, output_list[i], PI_PUD_OFF));
+                            if(has_invert){
+                                bool inv(param.second["invert"][i]);
+                                //std::cout << "Set invert option" << std::endl;
+                                output_inverts[output_list[i]] = inv;
+                            }
+                            if(has_default){
+                                int level(param.second["default"][i]);
+                                int ret = gpio_write(mpi, output_list[i], level);
+                                check_pgd_error(ret);
+                            }
+                            check_pgd_error(set_mode(mpi, output_list[i], PI_OUTPUT));
+                        }
+
+                        sub_out = nh.subscribe("output", 10, &PgdGpio::out_cb, this);
+                    }else{
+                        ROS_ERROR("Output need port element.");
+                        ros::shutdown();
+                    }
                 }
 			}
 		}
@@ -102,6 +131,12 @@ public:
 	
 	~PgdGpio(){
 		if(mpi >= 0){
+            for(auto&& id : input_cb_id){
+                callback_cancel(id);
+            }
+            for(auto&& gpio : output_list){
+                set_mode(mpi, gpio, PI_INPUT);
+            }
 			pigpio_stop(mpi);
 		}
 	}
@@ -111,14 +146,40 @@ private:
 	ros::Subscriber sub_out;
 	ros::Publisher pub_in;
 	std::vector<int32_t> output_list;
-	std::vector<int32_t> output_inverts;
+	std::map<int32_t, int32_t> output_inverts;
 	std::vector<int32_t> input_list;
 	std::vector<int32_t> input_inverts;
+    std::vector<int32_t> input_cb_id;
 	int32_t mpi;
 	std::string mpi_ip;
 	std::string mpi_port;
 	
 	void out_cb(const pgd_gpio_ros::gpio::ConstPtr msg){
+        bool domask(false);
+        if(msg->port_numbers.size() != msg->datas.size()){
+            ROS_WARN("port array and data array length miss mutched");
+            return;
+        }
+        if(msg->masks.size() == msg->port_numbers.size()){
+            domask = true;
+        }
+        for(int i = 0; i < msg->port_numbers.size(); i++){
+            if(domask){
+                if(!msg->masks[i]){
+                    if(std::count(output_list.cbegin(), output_list.cend(), msg->port_numbers[i]) == 1){
+                        gpio_write(mpi, msg->port_numbers[i], (msg->datas[i] & 0x01) ^ output_inverts[msg->port_numbers[i]]);
+                    }else{
+                        ROS_WARN("Specified not configured output port");
+                    }
+                }
+            }else{
+                if(std::count(output_list.cbegin(), output_list.cend(), msg->port_numbers[i]) == 1){
+                    gpio_write(mpi, msg->port_numbers[i], (msg->datas[i] & 0x01) ^ output_inverts[msg->port_numbers[i]]);
+                }else{
+                    ROS_WARN("Specified not configured output port");
+                }
+            }
+        }
 	}
 
 	static void in_cb(int pi, unsigned int user_gpio, unsigned int level, unsigned int tick, void* userdata){
